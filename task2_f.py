@@ -23,14 +23,18 @@ Motor2_IN2 = 4         # Input pin 2 for Motor 2
 duty_cycle = 0         # Initialize PWM duty cycle
 
 # Sensor pin definitions
-sensor_left = 16       # Pin for left sensor
-sensor_right = 23      # Pin for right sensor
+SENSOR_LEFT = 16       # Pin for left sensor
+SENSOR_RIGHT = 23      # Pin for right sensor
 
 # Variables to keep track of sensor tick counts
 left_sensor_tick_count = 0
 right_sensor_tick_count = 0
 
 MOTOR_ENCODER_TICKS = 20
+
+distance_sensor =None
+PWM_1 = None
+PWM_2 = None
 
 # State machine states
 class RobotState(Enum):
@@ -46,8 +50,8 @@ et1_state = RobotState.IDLE
 # GPIO setup for LED and pushbutton
 GPIO.setup(LED, GPIO.OUT)                               # Set LED pin as output
 GPIO.setup(Taster, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Set pushbutton pin as input with pull-up resistor
-GPIO.setup(sensor_left, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(sensor_right, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(SENSOR_LEFT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(SENSOR_RIGHT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 
 # Function to setup Motor 1 (Left) control
@@ -86,11 +90,6 @@ def M2_backward():
     GPIO.output(Motor2_IN1, GPIO.LOW)  # Set Motor2_IN1 LOW for backward rotation
     GPIO.output(Motor2_IN2, GPIO.HIGH) # Set Motor2_IN2 HIGH for backward rotation
 
-# Initialize PWM for both motors and set initial duty cycle to 0
-PWM_1 = M1_setup()
-PWM_1.start(0)                         # Start PWM for Motor 1 with 0% duty cycle
-PWM_2 = M2_setup()
-PWM_2.start(0)                         # Start PWM for Motor 2 with 0% duty cycle
 
 # PID control function to compute correction for motor speed based on tick difference
 def pid_control(target_diff, actual_diff, integral, last_error, dt, kp, ki, kd):
@@ -300,14 +299,12 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
         move_forward, move_backward: External functions for PID-controlled movement.
         RobotState: Enum defining robot states.
     """
-    global et1_state, left_sensor_tick_count, right_sensor_tick_count
-    # Initialize distance sensor (e.g., HC-SR04) with specified GPIO pins
-    distance_sensor = DistanceSensor(echo=27, trigger=25)
+    global et1_state, left_sensor_tick_count, right_sensor_tick_count, distance_sensor
+    
     # Record start time to track runtime
     runtime_start = time.time()
     # Set initial state to MOVE_FORWARD
     et1_state = RobotState.MOVE_FORWARD
-    state_start_time = runtime_start
     # Run until the specified interval is reached
     while time.time() - runtime_start < interval:
         # Read distance in centimeters (convert from meters)
@@ -389,22 +386,73 @@ def print_ticks(duty, direction):
     # left_sensor_tick_count = 0
     # right_sensor_tick_count = 0
 
+# Cleanup function
+def cleanup():
+    """
+    Cleans up GPIO resources, stops PWM, and closes sensor connections.
+    """
+    global PWM_1, PWM_2, distance_sensor
+    print("Cleaning up GPIO and resources...")
+    try:
+        # Close gpiozero devices first
+        if distance_sensor:
+            distance_sensor.close()
+            distance_sensor = None
+        # Stop PWM signals
+        if PWM_1:
+            PWM_1.stop()
+        if PWM_2:
+            PWM_2.stop()
+        # Remove event detection for encoders
+        try:
+            GPIO.remove_event_detect(SENSOR_LEFT)
+        except:
+            pass  # Ignore if already removed
+        try:
+            GPIO.remove_event_detect(SENSOR_RIGHT)
+        except:
+            pass  # Ignore if already removed
+        # Cleanup GPIO
+        GPIO.cleanup()
 
-GPIO.add_event_detect(16, GPIO.RISING, callback = sensor_left)
-GPIO.add_event_detect(23, GPIO.RISING, callback = sensor_right)
+        print("Cleanup complete.")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
 
-while (1):
-        
-        if GPIO.input(Taster) == GPIO.LOW:
-            duty = int(input("enter the duty cycle : "))
-            interval = int(input("enter the intervel : "))
 
-            move_forward_obstracle(PWM_1, PWM_2,duty, interval)
-            print(f"Left ticks: {left_sensor_tick_count}, Right ticks: {right_sensor_tick_count} ")
-            print("forward done")
+try:
+    # Initialize PWM for both motors and set initial duty cycle to 0
+    PWM_1 = M1_setup()
+    PWM_1.start(0)                         # Start PWM for Motor 1 with 0% duty cycle
+    PWM_2 = M2_setup()
+    PWM_2.start(0)                         # Start PWM for Motor 2 with 0% duty cycle
 
-            PWM_1.ChangeDutyCycle(0)
-            PWM_2.ChangeDutyCycle(0)
-            left_sensor_tick_count = 0
-            right_sensor_tick_count = 0
+    GPIO.add_event_detect(SENSOR_LEFT, GPIO.RISING, callback = sensor_left)
+    GPIO.add_event_detect(SENSOR_RIGHT, GPIO.RISING, callback = sensor_right)
+
+    # Initialize distance sensor (e.g., HC-SR04) with specified GPIO pins
+    distance_sensor = DistanceSensor(echo=27, trigger=25)
+
+
+    while (1):
+            
+            if GPIO.input(Taster) == GPIO.LOW:
+                duty = int(input("enter the duty cycle : "))
+                interval = int(input("enter the intervel : "))
+
+                move_forward_obstracle(PWM_1, PWM_2,duty, interval)
+                print(f"Left ticks: {left_sensor_tick_count}, Right ticks: {right_sensor_tick_count} ")
+                print("forward done")
+
+                PWM_1.ChangeDutyCycle(0)
+                PWM_2.ChangeDutyCycle(0)
+                left_sensor_tick_count = 0
+                right_sensor_tick_count = 0
+                time.sleep(0.1)  # Debounce pushbutton
+
+except KeyboardInterrupt:
+    print("\nProgram interrupted by user.")
+finally:
+    cleanup()  # Ensure cleanup on exit
+
             
