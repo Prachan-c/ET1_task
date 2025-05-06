@@ -3,11 +3,11 @@ import time
 from gpiozero import DistanceSensor
 from enum import Enum
 
+import json
+
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 
-# Pin definitions
-LED = 7                # Pin for LED
 Taster = 5             # Pin for pushbutton
 
 # Motor 1 (Left) pin definitions
@@ -20,8 +20,6 @@ Motor2_PWM = 19        # PWM pin for Motor 2
 Motor2_IN1 = 24        # Input pin 1 for Motor 2
 Motor2_IN2 = 4         # Input pin 2 for Motor 2
 
-duty_cycle = 0         # Initialize PWM duty cycle
-
 # Sensor pin definitions
 SENSOR_LEFT = 16       # Pin for left sensor
 SENSOR_RIGHT = 23      # Pin for right sensor
@@ -31,6 +29,8 @@ left_sensor_tick_count = 0
 right_sensor_tick_count = 0
 
 MOTOR_ENCODER_TICKS = 20
+
+STOP_DISTANCE = 10
 
 distance_sensor =None
 PWM_1 = None
@@ -44,14 +44,14 @@ class RobotState(Enum):
     TURN_LEFT = 4
     TURN_RIGHT = 5
     IDLE = 6
+    SLOWDOWN = 7
 
 et1_state = RobotState.IDLE
 
 # GPIO setup for LED and pushbutton
-GPIO.setup(LED, GPIO.OUT)                               # Set LED pin as output
-GPIO.setup(Taster, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Set pushbutton pin as input with pull-up resistor
 GPIO.setup(SENSOR_LEFT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(SENSOR_RIGHT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(Taster, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Set pushbutton pin as input with pull-up resistor
 
 
 # Function to setup Motor 1 (Left) control
@@ -274,9 +274,6 @@ def turn(PWM1, PWM2, dutycycle, angle, direction):
     # Reset tick counts for both wheels
     left_sensor_tick_count = 0
     right_sensor_tick_count = 0
-    # Set robot state to IDLE after turn
-    et1_state = RobotState.IDLE
-
 
 # Function to move forward with obstacle avoidance using a state machine
 def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
@@ -310,25 +307,25 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
         # Read distance in centimeters (convert from meters)
         sensor_distance = distance_sensor.distance * 100
         # State transitions based on distance
-        if 5 < sensor_distance < 35:
+        if sensor_distance <= STOP_DISTANCE:
             # Obstacle detected within 5-35 cm, turn right
-            et1_state = RobotState.TURN_RIGHT
+            et1_state = RobotState.STOP
+            print("setting to stopped")
             # print(f"setting state Turn right : {et1_state}")
-        elif 0 <= sensor_distance <= 5:
-            # Obstacle very close (0-5 cm), move backward
-            et1_state = RobotState.MOVE_BACKWARD
-            # print(f"setting state move backward : {et1_state}")
+        elif  STOP_DISTANCE < sensor_distance < (STOP_DISTANCE+(int(.3*duty))):
+            et1_state = RobotState.SLOWDOWN
+            print("SLOWING DOWN")
+
         else:
             # No obstacle (distance > 35 cm), move forward if not already doing so
             if et1_state != RobotState.MOVE_FORWARD:
                 et1_state = RobotState.MOVE_FORWARD
 
-        # print(f"Robot state: {et1_state}")
         # Handle actions for each state
         if et1_state == RobotState.MOVE_FORWARD:
             # Move forward with PID control for 0.1 seconds
             move_forward(PWM_1, PWM_2, duty, 0.1)
-            # print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
+            print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
         elif et1_state == RobotState.MOVE_BACKWARD:
             # Move backward with PID control for 0.1 seconds
             move_backward(PWM_1, PWM_2, duty, 0.1)
@@ -339,16 +336,26 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
             time.sleep(0.2)
             # Perform a 90-degree right turn
             turn(PWM_1, PWM_2, duty, 90, True)
-            time.sleep(1)  # Pause after turn to stabilize
+            et1_state = RobotState.IDLE
+            time.sleep(0.5)  # Pause after turn to stabilize
         elif et1_state == RobotState.IDLE:
             # Stop motors in IDLE state
             PWM_1.ChangeDutyCycle(0)
             PWM_2.ChangeDutyCycle(0)
             time.sleep(0.1)
+        elif et1_state == RobotState.SLOWDOWN:
+            # Slow down motors in SLOWDOWN state
+            slowduty = int(((sensor_distance)/100)*duty)
+            PWM_1.ChangeDutyCycle(slowduty)
+            PWM_2.ChangeDutyCycle(slowduty)
+            print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}, slow duty : {slowduty}")
+            time.sleep(0.1)
         elif et1_state == RobotState.STOP:
             # Stop motors and exit loop
+            print("Stopped")
             PWM_1.ChangeDutyCycle(0)
             PWM_2.ChangeDutyCycle(0)
+            print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
             break
         # Small delay for state transitions and sensor readings
         time.sleep(0.01)
@@ -359,15 +366,6 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
     # Set final state to STOP
     et1_state = RobotState.STOP
 
-
-# Function to move backward for given interval
-def move_backward_direct(PWM1, PWM2, dutycycle, interval):
-    PWM1.ChangeDutyCycle(dutycycle)
-    PWM2.ChangeDutyCycle(dutycycle)
-    M2_backward()
-    M1_backward()
-    time.sleep(interval)
-
 # Callback function for left sensor detection to count ticks
 def sensor_left(Channel):
     global left_sensor_tick_count
@@ -377,14 +375,6 @@ def sensor_left(Channel):
 def sensor_right(Channel):
     global right_sensor_tick_count
     right_sensor_tick_count += 1
-
-# Function to print sensor tick data
-def print_ticks(duty, direction):
-    global left_sensor_tick_count, right_sensor_tick_count
-    print(f"{direction} : Dutycycle: {duty} --> Left ticks: {left_sensor_tick_count}, Right ticks: {right_sensor_tick_count} ")
-
-    # left_sensor_tick_count = 0
-    # right_sensor_tick_count = 0
 
 # Cleanup function
 def cleanup():
@@ -412,8 +402,6 @@ def cleanup():
             GPIO.remove_event_detect(SENSOR_RIGHT)
         except:
             pass  # Ignore if already removed
-        # Cleanup GPIO
-        GPIO.cleanup()
 
         print("Cleanup complete.")
     except Exception as e:
@@ -432,23 +420,30 @@ try:
 
     # Initialize distance sensor (e.g., HC-SR04) with specified GPIO pins
     distance_sensor = DistanceSensor(echo=27, trigger=25)
+ 
+    # duty = int(input("enter the duty cycle : "))
+    # interval = int(input("enter the intervel : "))
 
+    duty = 50
+    interval = 10
 
-    while (1):
-            
-            if GPIO.input(Taster) == GPIO.LOW:
-                duty = int(input("enter the duty cycle : "))
-                interval = int(input("enter the intervel : "))
+    move_forward_obstracle(PWM_1, PWM_2,duty, interval)
+    # print(f"Left ticks: {left_sensor_tick_count}, Right ticks: {right_sensor_tick_count} ")
+    # print("forward done")
 
-                move_forward_obstracle(PWM_1, PWM_2,duty, interval)
-                print(f"Left ticks: {left_sensor_tick_count}, Right ticks: {right_sensor_tick_count} ")
-                print("forward done")
+    PWM_1.ChangeDutyCycle(0)
+    PWM_2.ChangeDutyCycle(0)
+    time.sleep(0.5)  # Debounce pushbutton
 
-                PWM_1.ChangeDutyCycle(0)
-                PWM_2.ChangeDutyCycle(0)
-                left_sensor_tick_count = 0
-                right_sensor_tick_count = 0
-                time.sleep(0.1)  # Debounce pushbutton
+    sensor_dist = distance_sensor.distance * 100
+
+    data = {
+    "distance": sensor_dist,
+    "left_ticks" : left_sensor_tick_count,
+    "right_ticks" : right_sensor_tick_count
+    }
+    
+    print(json.dumps(data))
 
 except KeyboardInterrupt:
     print("\nProgram interrupted by user.")
