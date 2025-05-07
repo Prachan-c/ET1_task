@@ -24,17 +24,19 @@ function handler (req, res) { //create server
 
 io.sockets.on('connection', function (socket) {// WebSocket Connection
   var lightvalue = 0; //static variable for current status
-  pushButton.watch(function (err, value) { //Watch for hardware interrupts on pushButton
-    if (err) { //if an error
-      console.error('There was an error', err); //output error message to console
-      return;
-    }
-    lightvalue = value;
-    socket.emit('light', lightvalue); //send button status to client
-  });
+  // pushButton.watch(function (err, value) { //Watch for hardware interrupts on pushButton
+  //   if (err) { //if an error
+  //     console.error('There was an error', err); //output error message to console
+  //     return;
+  //   }
+  //   lightvalue = value;
+  //   console.log("push button called light value :" + lightvalue);
+  //   socket.emit('light', lightvalue); //send button status to client
+  // });
 
   socket.on('light', function(ldata) { //get light switch status from client
     lightvalue = ldata;
+    console.log("ldata :"+ ldata + " , lightvalue : " + lightvalue)
     if (lightvalue != LED.readSync()) { //only change LED if status has changed
       LED.writeSync(lightvalue); //turn LED on or off
     }
@@ -49,7 +51,11 @@ io.sockets.on('connection', function (socket) {// WebSocket Connection
         const jsonMatch = buffer.match(/\{.*?\}/); // Match first JSON object
         if (jsonMatch) {
           const parsedData = JSON.parse(jsonMatch[0]); // Parse the JSON
-          console.log("Parsed JSON:", parsedData);
+          console.log("original Parsed JSON:", parsedData);
+          parsedData.lightStatus = lightvalue; // Add light switch status
+          parsedData.distance = parsedData.distance.toFixed(2); // Round distance to 2 decimal places
+          console.log("Modified Parsed JSON:", parsedData);
+
           socket.emit("data", parsedData); // Send to client
           // Remove the processed JSON from the buffer
           buffer = buffer.replace(jsonMatch[0], '');
@@ -69,8 +75,6 @@ io.sockets.on('connection', function (socket) {// WebSocket Connection
   pythonProcess.on("close", (code) => {
     console.log(`Python process exited with code ${code}`);
   });
-
-
 
   });
 });

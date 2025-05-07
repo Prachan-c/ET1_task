@@ -17,16 +17,21 @@
 window.addEventListener("load", function () {
     var lightbox = document.getElementById("light");
     lightbox.addEventListener("change", function () {
+        console.log("change noted");
         socket.emit("light", Number(this.checked));
     });
 });
-socket.on('light', function (data) {
-    document.getElementById("light").checked = !!data;
-});
+// socket.on('light', function (data) {
+//     document.getElementById("light").checked = !!data;
+//     console.log("in light : "+ !!data )
+// });
 socket.on('data', function (data) {
+    console.log(data)
     document.getElementById("distance").innerHTML = "Distance: " + (data.distance || "N/A");
     document.getElementById("leftTicks").innerHTML = "Left Ticks: " + (data.left_ticks || "N/A");
     document.getElementById("rightTicks").innerHTML = "Right Ticks: " + (data.right_ticks || "N/A");
+    console.log("light data : "+ !!data.lightStatus)
+    document.getElementById("light").checked = !!data.lightStatus;
 });
 socket.on('connect', () => {
     console.log('Connected to server');

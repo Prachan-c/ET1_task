@@ -325,7 +325,7 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
         if et1_state == RobotState.MOVE_FORWARD:
             # Move forward with PID control for 0.1 seconds
             move_forward(PWM_1, PWM_2, duty, 0.1)
-            print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
+            # print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
         elif et1_state == RobotState.MOVE_BACKWARD:
             # Move backward with PID control for 0.1 seconds
             move_backward(PWM_1, PWM_2, duty, 0.1)
@@ -348,14 +348,14 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
             slowduty = int(((sensor_distance)/100)*duty)
             PWM_1.ChangeDutyCycle(slowduty)
             PWM_2.ChangeDutyCycle(slowduty)
-            print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}, slow duty : {slowduty}")
+            # print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}, slow duty : {slowduty}")
             time.sleep(0.1)
         elif et1_state == RobotState.STOP:
             # Stop motors and exit loop
             print("Stopped")
             PWM_1.ChangeDutyCycle(0)
             PWM_2.ChangeDutyCycle(0)
-            print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
+            # print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
             break
         # Small delay for state transitions and sensor readings
         time.sleep(0.01)
@@ -425,7 +425,7 @@ try:
     # interval = int(input("enter the intervel : "))
 
     duty = 50
-    interval = 10
+    interval = 5
 
     move_forward_obstracle(PWM_1, PWM_2,duty, interval)
     # print(f"Left ticks: {left_sensor_tick_count}, Right ticks: {right_sensor_tick_count} ")
