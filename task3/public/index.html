@@ -2,8 +2,8 @@
 <html>
 <body>
 
-<h1>Control LED light</h1>
-<p><input type="checkbox" id="light"></p>
+<h1>Control ET1</h1>
+<p><input type="checkbox" id="moveforward">Move Forward</p>
 <div id = "distance"></div>
 <div id = "leftTicks"></div>
 <div id = "rightTicks"></div>
@@ -15,10 +15,10 @@
  <script>
   var socket = io();
 window.addEventListener("load", function () {
-    var lightbox = document.getElementById("light");
-    lightbox.addEventListener("change", function () {
+    var forwardbox = document.getElementById("moveforward");
+    forwardbox.addEventListener("change", function () {
         console.log("change noted");
-        socket.emit("light", Number(this.checked));
+        socket.emit("forward", Number(this.checked));
     });
 });
 // socket.on('light', function (data) {
@@ -30,8 +30,8 @@ socket.on('data', function (data) {
     document.getElementById("distance").innerHTML = "Distance: " + (data.distance || "N/A");
     document.getElementById("leftTicks").innerHTML = "Left Ticks: " + (data.left_ticks || "N/A");
     document.getElementById("rightTicks").innerHTML = "Right Ticks: " + (data.right_ticks || "N/A");
-    console.log("light data : "+ !!data.lightStatus)
-    document.getElementById("light").checked = !!data.lightStatus;
+    console.log("forward status : "+ !!data.forwardStatus)
+    document.getElementById("moveforward").checked = !!data.forwardStatus;
 });
 socket.on('connect', () => {
     console.log('Connected to server');

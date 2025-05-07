@@ -222,60 +222,106 @@ def move_backward(PWM1, PWM2, base_dutycycle, interval):
     # Drive motors with PID control
     PID_motor_drive(PWM1, PWM2, base_dutycycle, interval)
 
-# Function to turn the robot by a specified angle in a given direction
+import math
+# Function to calculate ticks for a turn based on wheel diameter and track width
+def angle_to_ticks(angle, wheel_diameter=6.5, ticks_per_rotation=20, track_width = 10.0):
+    """
+    Calculate encoder ticks required for a pivot turn.
+
+    Args:
+        angle (float): Turn angle in degrees (e.g., 90, 180, 360).
+        wheel_diameter (float): Wheel diameter in cm (default: 6.5).
+        track_width (float): Distance between wheels in cm (default: 10.0).
+        ticks_per_rotation (int): Encoder ticks per wheel rotation (default: 20).
+
+    Returns:
+        int: Number of ticks required for the active wheel.
+    """
+    # turn_radius = track_width / 2
+    turn_radius = track_width
+    # Calculate arc length for the turn
+    arc_length = (angle / 360) * 2 * math.pi * turn_radius  # Arc length in cm
+    # Calculate wheel rotations
+    wheel_circumference = math.pi * wheel_diameter  # ~20.42 cm
+    rotations = arc_length / wheel_circumference
+    # Convert to encoder ticks
+    ticks = int(round(rotations * ticks_per_rotation))
+    return ticks
+
+# Updated turn function
 def turn(PWM1, PWM2, dutycycle, angle, direction):
     """
-    Turns the robot by a specified angle (90, 180, or 360 degrees) in the given direction.
-    
+    Turns the robot by a specified angle in the given direction using encoder ticks.
+
     Args:
         PWM1: PWM object for left motor.
         PWM2: PWM object for right motor.
-        dutycycle (float): PWM duty cycle (0-100%) for the active motor during turn.
+        dutycycle (float): PWM duty cycle (0-100%) for the active motor.
         angle (int): Desired turn angle (90, 180, or 360 degrees).
         direction (bool): True for right turn, False for left turn.
-    
+
     Uses global variables:
-        left_sensor_tick_count, right_sensor_tick_count: Encoder tick counts for wheels.
+        left_sensor_tick_count, right_sensor_tick_count: Encoder tick counts.
         et1_state: Robot state (updated to IDLE after turn).
     """
-    global left_sensor_tick_count, right_sensor_tick_count, et1_state
-    ticks = 0
-    # Map angle to required encoder ticks (hardcoded values, may need calibration)
-    if angle == 90:
-        ticks = 14
-    elif angle == 180:
-        ticks = 30
-    elif angle == 360:
-        ticks = 60
-    else:
-        ticks = 0  # No turn if angle is invalid
+    global left_sensor_tick_count, right_sensor_tick_count
+    # Validate angle
+    if angle not in [45, 90, 135, 180,225, 270, 315, 360]:
+        print(f"Error: Invalid angle {angle}. Supported angles: 90, 180, 360")
+        return
 
-    if direction:  # Turn right
-        # Set left motor on, right motor off for right turn (pivot turn)
-        PWM1.ChangeDutyCycle(dutycycle)
-        PWM2.ChangeDutyCycle(0)
-        print("turn right")
-        left_sensor_tick_count = 0  # Reset left tick count
-        # Wait until left wheel reaches required ticks
-        while left_sensor_tick_count <= ticks:
-            time.sleep(0.01)
-    else:  # Turn left
-        # Set right motor on, left motor off for left turn (pivot turn)
-        PWM2.ChangeDutyCycle(dutycycle)
-        PWM1.ChangeDutyCycle(0)
-        right_sensor_tick_count = 0  # Reset right tick count
-        # Wait until right wheel reaches required ticks
-        while right_sensor_tick_count <= ticks:
-            time.sleep(0.01)
+    # Calculate ticks based on robot parameters
+    ticks = angle_to_ticks(angle, wheel_diameter=6.6, ticks_per_rotation=20, track_width= 10.0)
+    timeout = 5.0  # Maximum turn time (seconds) to prevent infinite loops
 
-    # Stop both motors after turn
+    # Set motor directions explicitly (assumes M1/M2_forward defined externally)
+    # M1_forward()
+    # M2_forward()
+
+    # if direction:  # Right turn
+    #     # Left motor active, right motor stopped for pivot turn
+    #     PWM1.ChangeDutyCycle(dutycycle)
+    #     PWM2.ChangeDutyCycle(0)
+    #     print(f"Turning right {angle} degrees ({ticks} ticks)")
+    #     left_sensor_tick_count = 0
+    #     start_time = time.time()
+    #     while left_sensor_tick_count < ticks and time.time() - start_time < timeout:
+    #         time.sleep(0.001)  # Non-blocking loop for encoder updates
+    # else:  # Left turn
+    #     # Right motor active, left motor stopped for pivot turn
+    #     PWM2.ChangeDutyCycle(dutycycle)
+    #     PWM1.ChangeDutyCycle(0)
+    #     print(f"Turning left {angle} degrees ({ticks} ticks)")
+    #     right_sensor_tick_count = 0
+    #     start_time = time.time()
+    #     while right_sensor_tick_count < ticks and time.time() - start_time < timeout:
+    #         time.sleep(0.001)  # Non-blocking loop for encoder updates
+
+    PWM1.ChangeDutyCycle(dutycycle)
+    PWM2.ChangeDutyCycle(0)
+
+    if direction:  # Right turn
+        # Left motor active, right motor stopped for pivot turn
+        print(f"Turning right {angle} degrees ({ticks} ticks)")
+        M1_forward()  
+    else:  # Left turn
+        print(f"Turning left {angle} degrees ({ticks} ticks)")
+        M1_backward()
+
+    
+    left_sensor_tick_count = 0
+    start_time = time.time()
+    while left_sensor_tick_count < ticks and time.time() - start_time < timeout:
+        time.sleep(0.001)  # Non-blocking loop for encoder updates
+
+    # Stop motors
     PWM1.ChangeDutyCycle(0)
     PWM2.ChangeDutyCycle(0)
-    # Reset tick counts for both wheels
+    # Reset tick counts
     left_sensor_tick_count = 0
     right_sensor_tick_count = 0
-    # Set robot state to IDLE after turn
-    et1_state = RobotState.IDLE
+
+
 
 
 # Function to move forward with obstacle avoidance using a state machine
@@ -340,6 +386,7 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
             # Perform a 90-degree right turn
             turn(PWM_1, PWM_2, duty, 90, True)
             time.sleep(1)  # Pause after turn to stabilize
+            et1_state = RobotState.IDLE
         elif et1_state == RobotState.IDLE:
             # Stop motors in IDLE state
             PWM_1.ChangeDutyCycle(0)

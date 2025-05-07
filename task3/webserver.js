@@ -23,22 +23,22 @@ function handler (req, res) { //create server
 }
 
 io.sockets.on('connection', function (socket) {// WebSocket Connection
-  var lightvalue = 0; //static variable for current status
+  var forwardvalue = 0; //static variable for current status
   // pushButton.watch(function (err, value) { //Watch for hardware interrupts on pushButton
   //   if (err) { //if an error
   //     console.error('There was an error', err); //output error message to console
   //     return;
   //   }
-  //   lightvalue = value;
-  //   console.log("push button called light value :" + lightvalue);
-  //   socket.emit('light', lightvalue); //send button status to client
+  //   forwardvalue = value;
+  //   console.log("push button called light value :" + forwardvalue);
+  //   socket.emit('light', forwardvalue); //send button status to client
   // });
 
-  socket.on('light', function(ldata) { //get light switch status from client
-    lightvalue = ldata;
-    console.log("ldata :"+ ldata + " , lightvalue : " + lightvalue)
-    if (lightvalue != LED.readSync()) { //only change LED if status has changed
-      LED.writeSync(lightvalue); //turn LED on or off
+  socket.on('forward', function(ldata) { //get light switch status from client
+    forwardvalue = ldata;
+    console.log("ldata :"+ ldata + " , forwardvalue : " + forwardvalue)
+    if (forwardvalue != LED.readSync()) { //only change LED if status has changed
+      LED.writeSync(forwardvalue); //turn LED on or off
     }
     let pythonProcess = spawn('python3', ['move_till_obstacle.py']);
     let buffer = ''; // Accumulate output
@@ -52,7 +52,7 @@ io.sockets.on('connection', function (socket) {// WebSocket Connection
         if (jsonMatch) {
           const parsedData = JSON.parse(jsonMatch[0]); // Parse the JSON
           console.log("original Parsed JSON:", parsedData);
-          parsedData.lightStatus = lightvalue; // Add light switch status
+          parsedData.forwardStatus = forwardvalue; // Add light switch status
           parsedData.distance = parsedData.distance.toFixed(2); // Round distance to 2 decimal places
           console.log("Modified Parsed JSON:", parsedData);
 

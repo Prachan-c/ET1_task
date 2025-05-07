@@ -310,11 +310,11 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
         if sensor_distance <= STOP_DISTANCE:
             # Obstacle detected within 5-35 cm, turn right
             et1_state = RobotState.STOP
-            print("setting to stopped")
+            # print("setting to stopped")
             # print(f"setting state Turn right : {et1_state}")
         elif  STOP_DISTANCE < sensor_distance < (STOP_DISTANCE+(int(.3*duty))):
             et1_state = RobotState.SLOWDOWN
-            print("SLOWING DOWN")
+            # print("SLOWING DOWN")
 
         else:
             # No obstacle (distance > 35 cm), move forward if not already doing so
@@ -352,7 +352,7 @@ def move_forward_obstracle(PWM_1, PWM_2, duty, interval=20):
             time.sleep(0.1)
         elif et1_state == RobotState.STOP:
             # Stop motors and exit loop
-            print("Stopped")
+            # print("Stopped")
             PWM_1.ChangeDutyCycle(0)
             PWM_2.ChangeDutyCycle(0)
             # print(f"FWD: dist : {sensor_distance:.2f}, lft_tick : {left_sensor_tick_count}, rgt_tick : {right_sensor_tick_count}")
