@@ -1,12 +1,64 @@
 <!DOCTYPE html>
 <html>
+    <head>
+        <style>
+          table {
+            width: 80%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            font-family: Arial, sans-serif;
+            display: none;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+          }
+          th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+          }
+          tr:nth-child(even) {
+            background-color: #f9f9f9;
+          }
+          tr:hover {
+            background-color: #f5f5f5;
+          }
+          table.visible {
+            display: table; 
+            }
+        </style>
+      </head>
 <body>
 
 <h1>Control ET1</h1>
-<p><input type="checkbox" id="moveforward">Move Forward</p>
-<div id = "distance"></div>
-<div id = "leftTicks"></div>
-<div id = "rightTicks"></div>
+<div>
+    <p><input type="checkbox" id="moveforward">Move Forward</p>
+    <div id = "fwd_distance"></div>
+    <div id = "fwd_leftTicks"></div>
+    <div id = "fwd_rightTicks"></div>
+</div>
+<div>
+    <p><input type="checkbox" id="movebackward">Move Backward</p>
+    <table id="dataTable">
+        <thead>
+          <tr>
+            <th>Direction</th>
+            <th>Distance</th>
+            <th>Left Tick</th>
+            <th>Right Tick</th>
+          </tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    
+</div>
+<div>
+    <p><input type="checkbox" id="moverandom">Move random</p>
+    <div id = "rnd_distance"></div>
+    <div id = "rnd_leftTicks"></div>
+    <div id = "rnd_rightTicks"></div>
+</div>
 
 
 <script src="/socket.io/socket.io.js"></script> 
@@ -15,24 +67,55 @@
  <script>
   var socket = io();
 window.addEventListener("load", function () {
-    var forwardbox = document.getElementById("moveforward");
+    let forwardbox = document.getElementById("moveforward");
+    let backwardbox = document.getElementById("movebackward");
     forwardbox.addEventListener("change", function () {
         console.log("change noted");
         socket.emit("forward", Number(this.checked));
+    });
+
+    backwardbox.addEventListener("change", function () {
+        console.log("change noted");
+        socket.emit("backward", Number(this.checked));
     });
 });
 // socket.on('light', function (data) {
 //     document.getElementById("light").checked = !!data;
 //     console.log("in light : "+ !!data )
 // });
-socket.on('data', function (data) {
+socket.on('forwarddata', function (data) {
     console.log(data)
-    document.getElementById("distance").innerHTML = "Distance: " + (data.distance || "N/A");
-    document.getElementById("leftTicks").innerHTML = "Left Ticks: " + (data.left_ticks || "N/A");
-    document.getElementById("rightTicks").innerHTML = "Right Ticks: " + (data.right_ticks || "N/A");
+    document.getElementById("fwd_distance").innerHTML = "Distance: " + (data.distance || "N/A");
+    document.getElementById("fwd_leftTicks").innerHTML = "Left Ticks: " + (data.left_ticks || "N/A");
+    document.getElementById("fwd_rightTicks").innerHTML = "Right Ticks: " + (data.right_ticks || "N/A");
     console.log("forward status : "+ !!data.forwardStatus)
     document.getElementById("moveforward").checked = !!data.forwardStatus;
 });
+
+function addTableRow(data) {
+    const table = document.getElementById('dataTable');
+    const tbody = document.getElementById('dataBody');
+      
+    // Show table on first data
+    if (!table.classList.contains('visible')) {
+        table.classList.add('visible');
+    }
+    const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${data.direction}</td>
+        <td>${data.distance || 'N/A'}</td>
+        <td>${data.left_ticks || 'N/A'}</td>
+        <td>${data.right_ticks || 'N/A'}</td>
+      `;
+      tbody.appendChild(row);
+    }
+
+    socket.on('backwarddata', function (data) {
+      console.log('Received backwarddata:', data);
+      addTableRow(data);
+    });
+
+
 socket.on('connect', () => {
     console.log('Connected to server');
 });

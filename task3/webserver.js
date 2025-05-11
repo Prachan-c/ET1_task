@@ -37,9 +37,6 @@ io.sockets.on('connection', function (socket) {// WebSocket Connection
   socket.on('forward', function(ldata) { //get light switch status from client
     forwardvalue = ldata;
     console.log("ldata :"+ ldata + " , forwardvalue : " + forwardvalue)
-    if (forwardvalue != LED.readSync()) { //only change LED if status has changed
-      LED.writeSync(forwardvalue); //turn LED on or off
-    }
     let pythonProcess = spawn('python3', ['move_till_obstacle.py']);
     let buffer = ''; // Accumulate output
     pythonProcess.stdout.on("data", (data) => {
@@ -56,7 +53,47 @@ io.sockets.on('connection', function (socket) {// WebSocket Connection
           parsedData.distance = parsedData.distance.toFixed(2); // Round distance to 2 decimal places
           console.log("Modified Parsed JSON:", parsedData);
 
-          socket.emit("data", parsedData); // Send to client
+          socket.emit("forwarddata", parsedData); // Send to client
+          // Remove the processed JSON from the buffer
+          buffer = buffer.replace(jsonMatch[0], '');
+        }
+      } catch (error) {
+        console.error("Error parsing JSON:", error.message);
+      } 
+  });
+
+  pythonProcess.stderr.on("data", (error) => {
+      console.error("Python Error:", error.toString());
+  });
+
+  // Log when the Python process exits
+  pythonProcess.on("close", (code) => {
+    console.log(`Python process exited with code ${code}`);
+  });
+
+  });
+
+  socket.on('backward', function(ldata) { //get light switch status from client
+    backwardvalue = ldata;
+    console.log("ldata :"+ ldata + " , backwardvalue : " + backwardvalue)
+    let pythonProcess = spawn('python3', ['move_backward.py']);
+    let buffer = ''; // Accumulate output
+    pythonProcess.stdout.on("data", (data) => {
+      buffer += data.toString(); // Append incoming data to buffer
+      console.log("Data received:", data.toString()); // Log raw output
+      // Try to extract and parse JSON from the buffer
+      try {
+        // Look for a valid JSON object in the buffer
+        const jsonMatch = buffer.match(/\{.*?\}/); // Match first JSON object
+        if (jsonMatch) {
+          const parsedData = JSON.parse(jsonMatch[0]); // Parse the JSON
+          console.log("original Parsed JSON:", parsedData);
+          parsedData.backwardStatus = backwardvalue; // Add light switch status
+          parsedData.distance = parsedData.distance.toFixed(2); // Round distance to 2 decimal places
+          parsedData.direction = "Backward"
+          console.log("Modified Parsed JSON:", parsedData);
+
+          socket.emit("backwarddata", parsedData); // Send to client
           // Remove the processed JSON from the buffer
           buffer = buffer.replace(jsonMatch[0], '');
         }
@@ -73,8 +110,42 @@ io.sockets.on('connection', function (socket) {// WebSocket Connection
 
   // Log when the Python process exits
   pythonProcess.on("close", (code) => {
-    console.log(`Python process exited with code ${code}`);
+    console.log(`First Python process (move_backward.py) exited with code ${code}`);
+  
+      // Run the second Python script
+    let pythonProcess2 = spawn('python3', ['move_till_obstacle.py']); // Replace with your second script name
+    let buffer2 = ''; // Accumulate output for second script
+    pythonProcess2.stdout.on('data', (data) => {
+      buffer2 += data.toString();
+      console.log('Data received from another_script.py:', data.toString());
+      try {
+        const jsonMatch = buffer2.match(/\{.*?\}/); // Match first JSON object
+        if (jsonMatch) {
+          const parsedData = JSON.parse(jsonMatch[0]);
+          console.log('Original Parsed JSON (another_script.py):', parsedData);
+          parsedData.backwardStatus = backwardvalue; // Add backward status
+          parsedData.distance = parsedData.distance.toFixed(2) 
+          parsedData.direction = "Forward"
+          console.log('Modified Parsed JSON (another_script.py):', parsedData);
+          socket.emit('backwarddata', parsedData); // Send to client with a different event
+          buffer2 = buffer2.replace(jsonMatch[0], ''); // Clear processed JSON
+        }
+      } catch (error) {
+        console.error('Error parsing JSON (another_script.py):', error.message);
+      }
+    });
+
+    pythonProcess2.stderr.on('data', (error) => {
+      console.error('Python Error (another_script.py):', error.toString());
+    });
+
+    pythonProcess2.on('close', (code) => {
+      console.log(`Second Python process (another_script.py) exited with code ${code}`);
+    });
   });
+  
+    // When the first script finishes, run the second script
+    
 
   });
 });
