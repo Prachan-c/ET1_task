@@ -3,13 +3,21 @@ import time
 from gpiozero import DistanceSensor
 from enum import Enum
 import json
+import random
+import math
 
 # Disable GPIO warnings and set BCM pin numbering mode
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 
+# Hardcoded constants
+DUTYCYCLE = 50          # Base PWM duty cycle (%)
+INTERVAL = 20           # Program execution time interval (seconds)
+STOP_BUFFER = 0.1       # Buffer factor for stop distance threshold
+SLOWDOWN_BUFFER = 0.3   # Buffer factor for slowdown distance threshold
+
 # Pin definitions
-TASTER = 5              # Pushbutton input pin
+# TASTER = 5              # Pushbutton input pin (unused)
 # Left motor (Motor 1) pins
 MOTOR1_PWM = 18         # PWM pin for speed control
 MOTOR1_IN1 = 17         # Direction control pin 1
@@ -26,20 +34,11 @@ SENSOR_RIGHT = 23       # Right wheel encoder input
 left_sensor_tick_count = 0
 right_sensor_tick_count = 0
 
-# Distance threshold (cm) to stop for obstacle avoidance
-STOP_DISTANCE = 10
+# Encoder ticks per wheel rotation
+MOTOR_ENCODER_TICKS = 20
 
-# Dutycycle Hardcoded
-DUTYCYCLE = 50 
-
-# The program exection time interval
-INTERVAL = 20
-
-# The buffer to Stop distance 
-STOP_BUFFER = 0.15
-
-# The slow-down buffer
-SLOWDOWN_BUFFER = 0.3
+# Distance threshold (cm) for obstacle avoidance
+STOP_DISTANCE = 30
 
 # Global objects for PWM and distance sensor
 distance_sensor = None
@@ -50,8 +49,12 @@ PWM_2 = None
 class RobotState(Enum):
     STOP = 1            # Robot stopped
     MOVE_FORWARD = 2    # Robot moving forward
-    IDLE = 3            # Robot idle, motors off
-    SLOWDOWN = 4        # Robot slowing down near obstacle
+    MOVE_BACKWARD = 3   # Robot moving backward
+    TURN_LEFT = 4       # Robot turning left
+    TURN_RIGHT = 5      # Robot turning right
+    IDLE = 6            # Robot idle, motors off
+    SLOWDOWN = 7        # Robot slowing down
+    TURN_ANGLE = 8      # Robot performing random angle turn
 
 # Initial robot state
 et1_state = RobotState.IDLE
@@ -59,7 +62,7 @@ et1_state = RobotState.IDLE
 # Configure GPIO pins
 GPIO.setup(SENSOR_LEFT, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Left encoder with pull-up
 GPIO.setup(SENSOR_RIGHT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Right encoder with pull-up
-GPIO.setup(TASTER, GPIO.IN, pull_up_down=GPIO.PUD_UP)        # Pushbutton with pull-up
+# GPIO.setup(TASTER, GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Pushbutton with pull-up (unused)
 
 def M1_setup():
     """Set up left motor (Motor 1) pins and initialize PWM."""
@@ -79,13 +82,23 @@ def M2_setup():
 
 def M1_forward():
     """Set left motor (Motor 1) to rotate forward."""
-    GPIO.output(MOTOR1_IN2, GPIO.LOW)   # Set direction for forward
+    GPIO.output(MOTOR1_IN2, GPIO.LOW)
     GPIO.output(MOTOR1_IN1, GPIO.HIGH)
+
+def M1_backward():
+    """Set left motor (Motor 1) to rotate backward."""
+    GPIO.output(MOTOR1_IN1, GPIO.LOW)
+    GPIO.output(MOTOR1_IN2, GPIO.HIGH)
 
 def M2_forward():
     """Set right motor (Motor 2) to rotate forward."""
-    GPIO.output(MOTOR2_IN2, GPIO.LOW)   # Set direction for forward
+    GPIO.output(MOTOR2_IN2, GPIO.LOW)
     GPIO.output(MOTOR2_IN1, GPIO.HIGH)
+
+def M2_backward():
+    """Set right motor (Motor 2) to rotate backward."""
+    GPIO.output(MOTOR2_IN1, GPIO.LOW)
+    GPIO.output(MOTOR2_IN2, GPIO.HIGH)
 
 def pid_control(target_diff, actual_diff, integral, last_error, dt, kp, ki, kd):
     """
@@ -167,9 +180,82 @@ def move_forward(PWM1, PWM2, base_dutycycle, interval):
     M2_forward()
     PID_motor_drive(PWM1, PWM2, base_dutycycle, interval)
 
-def move_forward_obstacle(PWM_1, PWM_2, duty, interval=20):
+def move_backward(PWM1, PWM2, base_dutycycle, interval):
     """
-    Move robot forward with obstacle avoidance using a state machine.
+    Move robot backward with PID control for straight movement.
+
+    Args:
+        PWM1: PWM object for left motor.
+        PWM2: PWM object for right motor.
+        base_dutycycle (float): Base PWM duty cycle (0-100%).
+        interval (float): Duration to move (seconds).
+    """
+    PWM1.ChangeDutyCycle(base_dutycycle)
+    PWM2.ChangeDutyCycle(base_dutycycle)
+    M1_backward()
+    M2_backward()
+    PID_motor_drive(PWM1, PWM2, base_dutycycle, interval)
+
+def angle_to_ticks(angle, wheel_diameter=6.5, ticks_per_rotation=20, track_width=10.0):
+    """
+    Calculate encoder ticks required for a pivot turn.
+
+    Args:
+        angle (float): Turn angle in degrees.
+        wheel_diameter (float): Wheel diameter in cm (default: 6.5).
+        ticks_per_rotation (int): Encoder ticks per wheel rotation (default: 20).
+        track_width (float): Distance between wheels in cm (default: 10.0).
+
+    Returns:
+        int: Number of ticks required for the active wheel.
+    """
+    turn_radius = track_width
+    arc_length = (angle / 360) * 2 * math.pi * turn_radius  # Arc length in cm
+    wheel_circumference = math.pi * wheel_diameter  # Wheel circumference in cm
+    rotations = arc_length / wheel_circumference
+    ticks = int(round(rotations * ticks_per_rotation))
+    return ticks
+
+def turn(PWM1, PWM2, dutycycle, angle, direction):
+    """
+    Turn the robot by a specified angle in the given direction using encoder ticks.
+
+    Args:
+        PWM1: PWM object for left motor.
+        PWM2: PWM object for right motor.
+        dutycycle (float): PWM duty cycle (0-100%) for the active motor.
+        angle (int): Desired turn angle in degrees.
+        direction (bool): True for right turn, False for left turn.
+
+    Modifies:
+        left_sensor_tick_count, right_sensor_tick_count: Global encoder tick counts.
+        et1_state: Robot state (set to IDLE after turn).
+    """
+    global left_sensor_tick_count, right_sensor_tick_count, et1_state
+    ticks = angle_to_ticks(angle, wheel_diameter=6.6, ticks_per_rotation=20, track_width=10.0)
+    timeout = 5.0  # Maximum turn time (seconds)
+
+    PWM1.ChangeDutyCycle(dutycycle)
+    PWM2.ChangeDutyCycle(0)
+
+    if direction:  # Right turn: left motor forward, right motor stopped
+        print(f"Turning right {angle} degrees ({ticks} ticks)")
+        M1_forward()
+    else:  # Left turn: left motor backward, right motor stopped
+        print(f"Turning left {angle} degrees ({ticks} ticks)")
+        M1_backward()
+
+    left_count_init = left_sensor_tick_count
+    start_time = time.time()
+    while (left_sensor_tick_count - left_count_init) < ticks and time.time() - start_time < timeout:
+        time.sleep(0.001)  # Non-blocking loop for encoder updates
+
+    PWM1.ChangeDutyCycle(0)  # Stop motors
+    PWM2.ChangeDutyCycle(0)
+
+def move_backward_obstacle(PWM_1, PWM_2, duty, interval=20):
+    """
+    Move robot backward with obstacle avoidance using a state machine.
 
     Args:
         PWM_1: PWM object for left motor.
@@ -179,43 +265,44 @@ def move_forward_obstacle(PWM_1, PWM_2, duty, interval=20):
 
     Modifies:
         et1_state, left_sensor_tick_count, right_sensor_tick_count: Global state and ticks.
+
+    Notes:
+        Transitions to MOVE_BACKWARD, TURN_ANGLE, or STOP based on distance sensor.
+        Performs random angle turns (0-360°) when near obstacles.
+        Uses STOP_BUFFER and SLOWDOWN_BUFFER for distance thresholds.
     """
     global et1_state, left_sensor_tick_count, right_sensor_tick_count, distance_sensor
     runtime_start = time.time()
-    et1_state = RobotState.MOVE_FORWARD
+    et1_state = RobotState.MOVE_BACKWARD
 
     while time.time() - runtime_start < interval:
         sensor_distance = distance_sensor.distance * 100  # Convert to cm
         # State transitions based on distance
-        if sensor_distance <= (STOP_DISTANCE + max(10, int(STOP_BUFFER * duty))):
-            et1_state = RobotState.STOP
-        elif STOP_DISTANCE < sensor_distance < (STOP_DISTANCE + max(20, int(SLOWDOWN_BUFFER * duty))):
-            et1_state = RobotState.SLOWDOWN
+        if sensor_distance <= (STOP_DISTANCE - max(20, int(STOP_BUFFER * duty))):
+            et1_state = RobotState.MOVE_BACKWARD
+        elif (STOP_DISTANCE - max(10, int(STOP_BUFFER * duty))) < sensor_distance < (STOP_DISTANCE + max(10, int(STOP_BUFFER * duty))):
+            et1_state = RobotState.TURN_ANGLE
         else:
-            if et1_state != RobotState.MOVE_FORWARD:
-                et1_state = RobotState.MOVE_FORWARD
+            et1_state = RobotState.STOP
 
         # Handle state actions
-        if et1_state == RobotState.MOVE_FORWARD:
-            move_forward(PWM_1, PWM_2, duty, 0.1)
+        if et1_state == RobotState.MOVE_BACKWARD:
+            move_backward(PWM_1, PWM_2, duty, 0.1)
+        elif et1_state == RobotState.TURN_ANGLE:
+            PWM_1.ChangeDutyCycle(0)
+            PWM_2.ChangeDutyCycle(0)
+            time.sleep(0.2)
+            print(f"diatance : {distance_sensor.distance * 100}")
+            turn(PWM_1, PWM_2, duty, random.randrange(0, 360), random.choice([True, False]))
+            et1_state = RobotState.IDLE
+            time.sleep(0.5)
         elif et1_state == RobotState.IDLE:
             PWM_1.ChangeDutyCycle(0)
             PWM_2.ChangeDutyCycle(0)
             time.sleep(0.1)
-        elif et1_state == RobotState.SLOWDOWN:
-            slow_duty = max(20,int((sensor_distance / 100) * duty))
-            move_forward(PWM_1, PWM_2, slow_duty, 0.1)
-            print(f"slowing down {slow_duty}, distance {sensor_distance}, left: {left_sensor_tick_count}, right : {right_sensor_tick_count}")
         elif et1_state == RobotState.STOP:
             PWM_1.ChangeDutyCycle(0)
             PWM_2.ChangeDutyCycle(0)
-            GPIO.output(MOTOR1_IN2, GPIO.LOW)   # Set direction for forward
-            GPIO.output(MOTOR1_IN1, GPIO.LOW)
-            GPIO.output(MOTOR2_IN2, GPIO.LOW)   # Set direction for forward
-            GPIO.output(MOTOR2_IN1, GPIO.LOW)
-            # time.sleep(0.1)
-
-            print(f"stop dist: {sensor_distance}, left: {left_sensor_tick_count}, right : {right_sensor_tick_count}")
             break
         time.sleep(0.01)
 
@@ -272,11 +359,11 @@ try:
     distance_sensor = DistanceSensor(echo=27, trigger=25)
 
     # Set movement parameters
-    duty = DUTYCYCLE  # PWM duty cycle (50%)
+    duty = DUTYCYCLE  # PWM duty cycle
     interval = INTERVAL  # Movement duration (seconds)
 
-    # Move forward with obstacle avoidance
-    move_forward_obstacle(PWM_1, PWM_2, duty, interval)
+    # Move backward with obstacle avoidance
+    move_backward_obstacle(PWM_1, PWM_2, duty, interval)
 
     # Stop motors
     PWM_1.ChangeDutyCycle(0)

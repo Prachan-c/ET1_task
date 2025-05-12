@@ -1,40 +1,166 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <!-- Styles for data tables -->
+  <style>
+    table {
+      width: 80%;
+      margin: 20px auto;
+      border-collapse: collapse;
+      font-family: Arial, sans-serif;
+      display: none;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    table.visible {
+      display: table;
+    }
+  </style>
+</head>
 <body>
+  <!-- Page title -->
+  <h1>Control ET1</h1>
 
-<h1>Control LED light</h1>
-<p><input type="checkbox" id="light"></p>
-<div id = "distance"></div>
-<div id = "leftTicks"></div>
-<div id = "rightTicks"></div>
+  <!-- Forward movement controls -->
+  <div>
+    <p><input type="checkbox" id="moveforward"> Move Forward</p>
+    <div id="fwd_distance"></div>
+    <div id="fwd_leftTicks"></div>
+    <div id="fwd_rightTicks"></div>
+  </div>
 
+  <!-- Backward movement controls and data table -->
+  <div>
+    <p><input type="checkbox" id="movebackward"> Move Backward</p>
+    <table id="bkwdDataTable">
+      <thead>
+        <tr>
+          <th>Direction</th>
+          <th>Distance</th>
+          <th>Left Tick</th>
+          <th>Right Tick</th>
+        </tr>
+      </thead>
+      <tbody id="bkwdDataBody"></tbody>
+    </table>
+  </div>
 
-<script src="/socket.io/socket.io.js"></script> 
-<!-- include socket.io client side script -->
-<!-- <script src="/js/data.js"></script> -->
- <script>
-  var socket = io();
-window.addEventListener("load", function () {
-    var lightbox = document.getElementById("light");
-    lightbox.addEventListener("change", function () {
-        socket.emit("light", Number(this.checked));
+  <!-- Random movement controls and data table -->
+  <div>
+    <p><input type="checkbox" id="moverandom"> Move Random</p>
+    <table id="rndDataTable">
+      <thead>
+        <tr>
+          <th>Direction</th>
+          <th>Distance</th>
+          <th>Left Tick</th>
+          <th>Right Tick</th>
+        </tr>
+      </thead>
+      <tbody id="rndDataBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Socket.IO client library -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // Initialize Socket.IO connection
+    const socket = io();
+
+    // Set up event listeners on page load
+    window.addEventListener('load', () => {
+      const forwardBox = document.getElementById('moveforward');
+      const backwardBox = document.getElementById('movebackward');
+      const randomBox = document.getElementById('moverandom');
+
+      // Emit forward event on checkbox change
+      forwardBox.addEventListener('change', () => {
+        console.log('Forward checkbox changed');
+        socket.emit('forward', Number(forwardBox.checked));
+      });
+
+      // Emit backward event on checkbox change
+      backwardBox.addEventListener('change', () => {
+        console.log('Backward checkbox changed');
+        socket.emit('backward', Number(backwardBox.checked));
+      });
+
+      // Emit random event on checkbox change
+      randomBox.addEventListener('change', () => {
+        console.log('Random checkbox changed');
+        socket.emit('random', Number(randomBox.checked));
+      });
     });
-});
-socket.on('light', function (data) {
-    document.getElementById("light").checked = !!data;
-});
-socket.on('data', function (data) {
-    document.getElementById("distance").innerHTML = "Distance: " + (data.distance || "N/A");
-    document.getElementById("leftTicks").innerHTML = "Left Ticks: " + (data.left_ticks || "N/A");
-    document.getElementById("rightTicks").innerHTML = "Right Ticks: " + (data.right_ticks || "N/A");
-});
-socket.on('connect', () => {
-    console.log('Connected to server');
-});
-socket.on('disconnect', () => {
-    console.log('Disconnected from server');
-});
- </script>
 
+    // Handle forward movement data
+    socket.on('forwarddata', (data) => {
+      console.log('Received forwarddata:', data);
+      document.getElementById('fwd_distance').innerHTML = `Distance: ${data.distance || 'N/A'}`;
+      document.getElementById('fwd_leftTicks').innerHTML = `Left Ticks: ${data.left_ticks || 'N/A'}`;
+      document.getElementById('fwd_rightTicks').innerHTML = `Right Ticks: ${data.right_ticks || 'N/A'}`;
+      document.getElementById('moveforward').checked = !!data.forwardStatus;
+    });
+
+    // Add a row to the specified table
+    function addTableRow(data, prefix) {
+      /**
+       * Append a row to the table with movement data.
+       *
+       * @param {Object} data - Data object with direction, distance, left_ticks, right_ticks.
+       * @param {string} prefix - Table prefix ('bkwd' or 'rnd').
+       */
+      const table = document.getElementById(`${prefix}DataTable`);
+      const tbody = document.getElementById(`${prefix}DataBody`);
+
+      // Show table on first data
+      if (!table.classList.contains('visible')) {
+        table.classList.add('visible');
+      }
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${data.direction}</td>
+        <td>${data.distance || 'N/A'}</td>
+        <td>${data.left_ticks || 'N/A'}</td>
+        <td>${data.right_ticks || 'N/A'}</td>
+      `;
+      tbody.appendChild(row);
+    }
+
+    // Handle backward movement data
+    socket.on('backwarddata', (data) => {
+      console.log('Received backwarddata:', data);
+      addTableRow(data, 'bkwd');
+    });
+
+    // Handle random movement data
+    socket.on('randomdata', (data) => {
+      console.log('Received randomdata:', data);
+      addTableRow(data, 'rnd');
+    });
+
+    // Log connection status
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    // Log disconnection status
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+    });
+  </script>
 </body>
 </html>
