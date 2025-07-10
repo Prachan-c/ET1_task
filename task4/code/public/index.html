@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Styles for data tables -->
+  <style>
+    table {
+      width: 80%;
+      margin: 20px auto;
+      border-collapse: collapse;
+      font-family: Arial, sans-serif;
+      display: none;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    table.visible {
+      display: table;
+    }
+  </style>
+</head>
+<body>
+  <!-- Page title -->
+  <h1>Control ET1</h1>
+
+  <!-- Forward movement controls -->
+  <!-- <div>
+    <p><input type="checkbox" id="moveforward"> Move Forward</p>
+    <div id="fwd_distance"></div>
+    <div id="fwd_leftTicks"></div>
+    <div id="fwd_rightTicks"></div>
+  </div> -->
+
+  <!-- Backward movement controls and data table -->
+  <!-- <div>
+    <p><input type="checkbox" id="movebackward"> Move Backward</p>
+    <table id="bkwdDataTable">
+      <thead>
+        <tr>
+          <th>Direction</th>
+          <th>Distance</th>
+          <th>Left Tick</th>
+          <th>Right Tick</th>
+        </tr>
+      </thead>
+      <tbody id="bkwdDataBody"></tbody>
+    </table>
+  </div> -->
+
+  <!-- Random movement controls and data table -->
+  <!-- <div>
+    <p><input type="checkbox" id="moverandom"> Move Random</p>
+    <table id="rndDataTable">
+      <thead>
+        <tr>
+          <th>Direction</th>
+          <th>Distance</th>
+          <th>Left Tick</th>
+          <th>Right Tick</th>
+        </tr>
+      </thead>
+      <tbody id="rndDataBody"></tbody>
+    </table>
+  </div> -->
+
+  <div>
+    <p><input type="checkbox" id="sensorfusion"> Sensor Fusion</p>
+    <div id="fus_speed"></div>
+    <div id="fus_turn"></div>
+    <div id="fus_delta"></div>
+  </div>
+
+  <h3>Fusion Data Log</h3>
+<table id="fusionTable">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Speed (cm/s)</th>
+      <th>Turn (ticks)</th>
+      <th>Distance (cm)</th>
+    </tr>
+  </thead>
+  <tbody id="fusionTableBody">
+    <!-- rows will be added dynamically -->
+  </tbody>
+</table>
+
+
+  <!-- Socket.IO client library -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // Initialize Socket.IO connection
+    const socket = io();
+
+    // Set up event listeners on page load
+    window.addEventListener('load', () => {
+      // const forwardBox = document.getElementById('moveforward');
+      // const backwardBox = document.getElementById('movebackward');
+      // const randomBox = document.getElementById('moverandom');
+      const fusionBox = document.getElementById('sensorfusion');
+
+      // // Emit forward event on checkbox change
+      // forwardBox.addEventListener('change', () => {
+      //   console.log('Forward checkbox changed');
+      //   socket.emit('forward', Number(forwardBox.checked));
+      // });
+
+      // // Emit backward event on checkbox change
+      // backwardBox.addEventListener('change', () => {
+      //   console.log('Backward checkbox changed');
+      //   socket.emit('backward', Number(backwardBox.checked));
+      // });
+
+      // // Emit random event on checkbox change
+      // randomBox.addEventListener('change', () => {
+      //   console.log('Random checkbox changed');
+      //   socket.emit('random', Number(randomBox.checked));
+      // });
+
+      fusionBox.addEventListener('change', () => {
+        console.log('sensor fusion checkbox changed');
+        socket.emit('fusion', Number(fusionBox.checked));
+      });
+    });
+
+    // Handle forward movement data
+    // socket.on('forwarddata', (data) => {
+    //   console.log('Received forwarddata:', data);
+    //   document.getElementById('fwd_distance').innerHTML = `Distance: ${data.distance || 'N/A'}`;
+    //   document.getElementById('fwd_leftTicks').innerHTML = `Left Ticks: ${data.left_ticks || 'N/A'}`;
+    //   document.getElementById('fwd_rightTicks').innerHTML = `Right Ticks: ${data.right_ticks || 'N/A'}`;
+    //   document.getElementById('moveforward').checked = !!data.forwardStatus;
+    // });
+
+    // Add a row to the specified table
+    // function addTableRow(data, prefix) {
+    //   /**
+    //    * Append a row to the table with movement data.
+    //    *
+    //    * @param {Object} data - Data object with direction, distance, left_ticks, right_ticks.
+    //    * @param {string} prefix - Table prefix ('bkwd' or 'rnd').
+    //    */
+    //   const table = document.getElementById(`${prefix}DataTable`);
+    //   const tbody = document.getElementById(`${prefix}DataBody`);
+
+    //   // Show table on first data
+    //   if (!table.classList.contains('visible')) {
+    //     table.classList.add('visible');
+    //   }
+
+    //   const row = document.createElement('tr');
+    //   row.innerHTML = `
+    //     <td>${data.direction}</td>
+    //     <td>${data.distance || 'N/A'}</td>
+    //     <td>${data.left_ticks || 'N/A'}</td>
+    //     <td>${data.right_ticks || 'N/A'}</td>
+    //   `;
+    //   tbody.appendChild(row);
+    // }
+
+    // // Handle backward movement data
+    // socket.on('backwarddata', (data) => {
+    //   console.log('Received backwarddata:', data);
+    //   addTableRow(data, 'bkwd');
+    // });
+
+    // // Handle random movement data
+    // socket.on('randomdata', (data) => {
+    //   console.log('Received randomdata:', data);
+    //   addTableRow(data, 'rnd');
+    // });
+
+    // Log connection status
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    socket.on('fusiondata', (data) => {
+      // const timestamp = new Date().toLocaleTimeString();
+      // data.timestamp = timestamp;
+      fusionDataBuffer.push(data);
+      console.log(`fus_data : ${data}`);
+
+      // Show the table if hidden
+      const fusionTable = document.getElementById('fusionTable');
+      if (!fusionTable.classList.contains('visible')) {
+        fusionTable.classList.add('visible');
+      }
+
+      document.getElementById('fus_speed').innerHTML = `Speed: ${data.speed_cm_s || 'N/A'} cm/s`;
+      document.getElementById('fus_turn').innerHTML = `Turn: ${data.turning_ticks || 'N/A'} ticks`;
+      document.getElementById('fus_delta').innerHTML = `Delta Distance: ${data.delta_distance || 'N/A'} cm`;
+      // document.getElementById('moveforward').checked = !!data.forwardStatus;
+
+      
+    });
+
+    // Log disconnection status
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+    });
+
+    const fusionDataBuffer = [];
+
+    // socket.on('fusiondata', (data) => {
+    //   console.log("Live fusion data:", data);
+    //   document.getElementById("fusion").innerText =
+    //     `Speed: ${data.speed_cm_s} cm/s | Turn: ${data.turning_ticks} ticks | ΔDist: ${data.delta_distance} cm`;
+    // });
+
+    setInterval(() => {
+    const tableBody = document.getElementById("fusionTableBody");
+
+    while (fusionDataBuffer.length > 0) {
+        const row = fusionDataBuffer.shift();
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${row.timestamp}</td>
+          <td>${row.speed_cm_s}</td>
+          <td>${row.turning_ticks}</td>
+          <td>${row.delta_distance}</td>
+        `;
+        tableBody.appendChild(tr);
+      }
+    }, 100);
+  </script>
+</body>
+</html>
