@@ -1,6 +1,6 @@
 # Embedded Computing Lab – ET1 Robot Tasks
 
-This repository contains the complete implementation, experiments, and documentation for the **Embedded Computing Lab (ET1 Robot)** conducted at **Hochschule Ravensburg-Weingarten – University of Applied Sciences**.
+This repository contains the complete implementation, experiments, and documentation for the **ET1 Robot**
 All tasks (Task 1 to Task 4), including source code, web interface, and experimental results, are included. A detailed **lab report** describing objectives, methodology, observations, and results is also provided.
 ---
 ## 📌 Overview
